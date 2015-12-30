@@ -126,9 +126,12 @@ app.post('/signup', function (req, res) {
   })
 })
 
-app.post('/logout', function (req, res) {
+app.get('/logout', function(req, res){
+  req.session.destroy(function(){
+    res.redirect('/login');
+  });
+});
 
-})
 /************************************************************/
 // Handle the wildcard route last - if all other routes fail
 // assume the route is a short code and try and handle it here.
