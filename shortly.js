@@ -2,7 +2,8 @@ var express = require('express');
 var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
-
+var session = require('express-session');
+var bcrypt = require('bcrypt-nodejs');
 
 var db = require('./app/config');
 var Users = require('./app/collections/users');
@@ -10,6 +11,7 @@ var User = require('./app/models/user');
 var Links = require('./app/collections/links');
 var Link = require('./app/models/link');
 var Click = require('./app/models/click');
+
 
 var app = express();
 
@@ -21,27 +23,28 @@ app.use(bodyParser.json());
 // Parse forms (signup/login)
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
+app.use(session({
+  secret: 'shhh, it\'s a secret',
+  resave: false,
+  saveUninitialized: true
+}));
 
 
-app.get('/', 
-function(req, res) {
+app.get('/', util.checkUser, function(req, res) {
+    res.render('index');
+});
+
+app.get('/create', util.checkUser, function (req, res) {
   res.render('index');
 });
 
-app.get('/create', 
-function(req, res) {
-  res.render('index');
-});
-
-app.get('/links', 
-function(req, res) {
+app.get('/links', util.checkUser, function (req, res) {
   Links.reset().fetch().then(function(links) {
     res.send(200, links.models);
   });
 });
 
-app.post('/links', 
-function(req, res) {
+app.post('/links', util.checkUser, function (req, res) {
   var uri = req.body.url;
 
   if (!util.isValidUrl(uri)) {
@@ -76,8 +79,56 @@ function(req, res) {
 // Write your authentication routes here
 /************************************************************/
 
+app.get('/signup', function (req, res) {
+  res.render('signup');
+});
 
+app.get('/login', function (req, res) {
+  res.render('login');
+});
 
+app.post('/login', function (req, res) {
+  var username = req.body.username;
+  var password = req.body.password;
+  
+  new User({username: username}).fetch().then(function (user) {
+    if (!user) {
+      return res.redirect('/login');
+    }
+    bcrypt.compare(password, user.get('password'), function (err, match) {
+      if (match) {
+        util.createSession(req, res, user);
+      } else {
+        res.redirect('/login');
+      }
+    });
+  })   
+});
+
+app.post('/signup', function (req, res) {
+  var username = req.body.username;
+  var password = req.body.password;
+
+  new User({username: username}).fetch().then(function (user) {
+    if (!user) {
+      bcrypt.hash(password, null, null, function (err, hash) {
+        Users.create({
+          username: username,
+          password: hash,
+        }).then(function (user) {
+          util.createSession(req, res, user)
+        });
+      });
+    } else {
+      console.log('Account already exists');
+      res.redirect('/signup');
+    }
+  })
+})
+
+app.post('/logout', function (req, res) {
+
+})
 /************************************************************/
 // Handle the wildcard route last - if all other routes fail
 // assume the route is a short code and try and handle it here.
